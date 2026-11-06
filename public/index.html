@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Study Planner</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#faf8f4;--card:#fff;--ink:#1f2328;--mute:#6b7280;--line:#e5e1d8;--acc:#2f6f5e;--accink:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17191c;--card:#202328;--ink:#e8e6e1;--mute:#9aa0a8;--line:#33373d;--acc:#5fb59d;--accink:#10201b}}
+:root[data-theme="dark"]{--bg:#17191c;--card:#202328;--ink:#e8e6e1;--mute:#9aa0a8;--line:#33373d;--acc:#5fb59d;--accink:#10201b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Georgia,"Times New Roman",serif;max-width:760px;margin-inline:auto;padding:16px}
+h1{font-size:1.5rem;margin:.2em 0}
+p.sub{color:var(--mute);margin-top:0}
+nav{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
+button,select,input,textarea{font:inherit;color:inherit}
+nav button,.btn{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:8px;cursor:pointer}
+nav button.on,.btn.pri{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+textarea{width:100%}
+.item{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border:0}
+.mute{color:var(--mute);font-size:.9rem}
+.blk{padding:10px 12px;border-left:4px solid var(--line);margin:8px 0;border-radius:4px;background:var(--bg)}
+.blk.class{border-left-color:var(--mute)}
+.blk.read{border-left-color:var(--acc)}
+.x{background:none;border:0;color:var(--mute);cursor:pointer;font-size:1.1rem}
+#notes{white-space:pre-wrap;overflow-x:auto}
+.hide{display:none}
+@media print{body *{visibility:hidden}#notesCard,#notesCard *{visibility:visible}#notesCard{position:absolute;left:0;top:0;width:100%;border:0}.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<h1>Study Planner</h1>
+<p class="sub">Enter your timetable once. Get a daily reading plan and notes you can save as PDF.</p>
+<nav class="noprint">
+  <button data-t="tt" class="on">Timetable</button>
+  <button data-t="plan">Reading plan</button>
+  <button data-t="nt">Notes</button>
+</nav>
+
+<section id="tt">
+  <div class="card">
+    <div class="row">
+      <select id="day"></select>
+      <input id="subj" placeholder="Subject" size="16">
+      <input id="st" type="time" value="08:00">
+      <input id="en" type="time" value="09:00">
+      <button class="btn pri" id="add">Add class</button>
+    </div>
+  </div>
+  <div class="card" id="list"></div>
+</section>
+
+<section id="plan" class="hide">
+  <div class="card row"><label>Day <select id="pday"></select></label><label>Review length <select id="rl"><option>15</option><option selected>20</option><option>30</option></select> min</label></div>
+  <div id="pout"></div>
+</section>
+
+<section id="nt" class="hide">
+  <div class="card noprint">
+    <div class="row"><select id="nsub"></select><input id="topic" placeholder="Topic (optional)" size="22"><select id="lvl"><option>Short summary</option><option selected>Detailed study notes</option><option>Revision sheet with practice questions</option></select></div>
+    <div class="row" style="margin-top:8px"><button class="btn pri" id="gen">Generate notes</button><button class="btn" id="pdf">Save as PDF</button><button class="btn" id="md">Download text</button></div>
+    <p class="mute" id="msg"></p>
+  </div>
+  <div class="card" id="notesCard"><h2 id="nh" style="margin-top:0"></h2><div id="notes" class="mute">Your notes will appear here.</div></div>
+</section>
+
+<script>
+var DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+var K="studyplanner.tt";
+var tt=[];
+try{tt=JSON.parse(localStorage.getItem(K)||"[]")}catch(e){tt=[]}
+function save(){try{localStorage.setItem(K,JSON.stringify(tt))}catch(e){}}
+function $(i){return document.getElementById(i)}
+function m(t){var p=t.split(":");return +p[0]*60+ +p[1]}
+function f(n){var h=Math.floor(n/60),x=n%60;return (h<10?"0":"")+h+":"+(x<10?"0":"")+x}
+function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
+var today=(new Date().getDay()+6)%7;
+["day","pday"].forEach(function(id){$(id).innerHTML=DAYS.map(function(d,i){return '<option value="'+i+'"'+(i===today?" selected":"")+">"+d+"</option>"}).join("")});
+
+document.querySelectorAll("nav button").forEach(function(b){b.onclick=function(){
+  document.querySelectorAll("nav button").forEach(function(x){x.classList.toggle("on",x===b)});
+  ["tt","plan","nt"].forEach(function(s){$(s).classList.toggle("hide",s!==b.dataset.t)});
+  if(b.dataset.t==="plan")plan();
+}});
+
+function subjects(){var s=[];tt.forEach(function(c){if(s.indexOf(c.s)<0)s.push(c.s)});return s}
+function render(){
+  var h="";
+  DAYS.forEach(function(d,i){
+    var cs=tt.filter(function(c){return c.d===i}).sort(function(a,b){return m(a.a)-m(b.a)});
+    if(!cs.length)return;
+    h+="<h3 style='margin:.6em 0 .2em'>"+d+"</h3>";
+    cs.forEach(function(c){h+='<div class="item"><span>'+esc(c.s)+' <span class="mute">'+c.a+"–"+c.b+'</span></span><button class="x" data-id="'+c.id+'" aria-label="Remove">✕</button></div>'});
+  });
+  $("list").innerHTML=h||'<span class="mute">No classes yet. Add your first one above.</span>';
+  $("list").querySelectorAll(".x").forEach(function(b){b.onclick=function(){tt=tt.filter(function(c){return c.id!=b.dataset.id});save();render()}});
+  var s=subjects();
+  $("nsub").innerHTML=s.length?s.map(function(x){return "<option>"+esc(x)+"</option>"}).join(""):"<option value=''>Add classes first</option>";
+}
+$("add").onclick=function(){
+  var s=$("subj").value.trim(),a=$("st").value,b=$("en").value;
+  if(!s||!a||!b||m(b)<=m(a)){alert("Enter a subject and a valid start and end time.");return}
+  tt.push({id:Date.now()+Math.random(),d:+$("day").value,s:s,a:a,b:b});
+  save();$("subj").value="";render();
+};
+
+function plan(){
+  var d=+$("pday").value,rl=+$("rl").value;
+  var cs=tt.filter(function(c){return c.d===d}).sort(function(a,b){return m(a.a)-m(b.a)});
+  if(!cs.length){$("pout").innerHTML='<div class="card mute">No classes on '+DAYS[d]+".</div>";return}
+  var out=[],used=0;
+  cs.forEach(function(c,i){
+    out.push('<div class="blk class"><b>'+c.a+"–"+c.b+"</b> "+esc(c.s)+" (class)</div>");
+    var end=m(c.b),next=cs[i+1]?m(cs[i+1].a):null;
+    if(next===null||next-end>=rl+5){
+      out.push('<div class="blk read"><b>'+f(end)+"–"+f(end+rl)+"</b> Read and review notes for "+esc(c.s)+"</div>");used++;
+    }
+  });
+  var last=m(cs[cs.length-1].b)+rl+30;
+  var subs=[];cs.forEach(function(c){if(subs.indexOf(c.s)<0)subs.push(c.s)});
+  out.push('<div class="blk read"><b>'+f(last)+"–"+f(last+25)+"</b> Recap tonight: "+subs.map(esc).join(", ")+"</div>");
+  $("pout").innerHTML=out.join("")+'<p class="mute">Review blocks are placed right after each class when the gap allows. Open the Notes tab to generate the material to read.</p>';
+}
+$("pday").onchange=plan;$("rl").onchange=plan;
+
+var cur="";
+async function callApi(code){
+  var h={"content-type":"application/json"};
+  if(code)h["x-access-code"]=code;
+  return fetch("/api/notes",{method:"POST",headers:h,body:JSON.stringify({subject:$("nsub").value,topic:$("topic").value.trim(),level:$("lvl").value})});
+}
+$("gen").onclick=async function(){
+  var s=$("nsub").value;if(!s){$("msg").textContent="Add a class to your timetable first.";return}
+  var t=$("topic").value.trim();
+  $("nh").textContent=s+(t?": "+t:"");$("notes").className="";$("notes").textContent="Writing your notes…";$("msg").textContent="";
+  $("gen").disabled=true;
+  try{
+    var code="";try{code=sessionStorage.getItem("sp.code")||""}catch(e){}
+    var r=await callApi(code);
+    if(r.status===401){
+      code=prompt("Enter the access code")||"";
+      try{sessionStorage.setItem("sp.code",code)}catch(e){}
+      r=await callApi(code);
+    }
+    var raw=await r.text(),d={};
+    try{d=JSON.parse(raw)}catch(x){throw new Error("The server took too long or returned an unexpected reply. Try Short summary, or try again.")}
+    if(!r.ok)throw new Error(d.error||"Request failed");
+    cur=d.text;$("notes").textContent=cur;
+  }catch(e){$("msg").textContent=e.message||"Couldn’t generate notes. Try again in a moment.";if(!cur)$("notes").textContent=""}
+  $("gen").disabled=false;
+};
+$("pdf").onclick=function(){if(!cur){$("msg").textContent="Generate notes first.";return}window.print()};
+$("md").onclick=function(){
+  if(!cur){$("msg").textContent="Generate notes first.";return}
+  var name=($("nh").textContent||"notes").replace(/[^\w\-]+/g,"_")+".txt";
+  var blob=new Blob([$("nh").textContent+"\n\n"+cur],{type:"text/plain"});
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
+};
+render();
+</script>
+</body>
+</html>
